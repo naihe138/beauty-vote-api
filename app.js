@@ -9,6 +9,7 @@ const cors = require('kcors'); //  跨域设置
 const logger = require('koa-logger');// 日志打印
 const router = require('koa-router')();
 const static = require('koa-static');
+const jwt = require('koa-jwt');
 require('./config/db');
 const bodyParser = require('koa-bodyparser');
 // 上传图片中间件
@@ -23,7 +24,48 @@ app.use(cors())
    .use(logger())
    .use(router.routes())
    .use(static(__dirname + '/uploads'))
-   .use(router.allowedMethods());
+   .use(router.allowedMethods())
+   .use(jwt({secret: 'shared-secret', passthrough: true}));
+
+
+// 后台用户认证
+app.use(function *(next){
+  var ctx = this;
+  // 如果不是admin，直接跳过该中间件
+  // if (ctx.request.url.indexOf('admin') === -1) {
+  //   return yield next;
+  // }
+  var token = ctx.request.headers.token || '';
+  console.log('回话的意思' + token);
+  if (token) {
+    var profile = jwt.verify(token, 'shared-secret');
+    if (profile) {
+      // 设置过期时间为7天
+      if (Date.now() - profile.original_iat  < 7 * 24 * 60 * 60 * 1000) {
+        ctx.user_token = profile;
+        yield next;
+      } else {
+        ctx.status = 401;
+        ctx.body = {
+          success: false,
+          message: 'token已过期'
+        };
+      }
+    } else {
+      ctx.status = 401;
+      ctx.body = {
+        success: false,
+        message: 'token认证失败'
+      }
+    }
+  } else {
+    ctx.status = 401;
+    ctx.body = {
+      success: false,
+      message: 'token认证失败'
+    }
+  }
+});
 
 router.post('/register', user.register);  // 注册
 router.post('/login', user.login);  // 登录
